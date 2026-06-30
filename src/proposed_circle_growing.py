@@ -1,28 +1,122 @@
-"""Paper-inspired digital circle growing Voronoi construction."""
-
 import time
 import warnings
 from pathlib import Path
-
 import numpy as np
+import taichi as ti
 
+# Adjust these imports based on your exact project structure if needed
 from config import DEFAULT_INF, MEMORY_WARNING_MB
-from .metrics import estimate_memory_mb
-from .taichi_init import init_taichi
+from utils import _validate_inputs, estimate_memory_mb
+from taichi_init import init_taichi
+
+@ti.func
+def include_sym_points(frames_arg: ti.template(), s: ti.i32, xc: ti.i32, yc: ti.i32, i: ti.i32, j: ti.i32, r: ti.i32, grid_size: ti.i32):
+    """
+    Plots the 8 symmetrical octant points for a given circle radius.
+    """
+    points = ti.Matrix([
+        [xc + i, yc + j], [xc + i, yc - j], [xc - i, yc + j], [xc - i, yc - j],
+        [xc + j, yc + i], [xc + j, yc - i], [xc - j, yc + i], [xc - j, yc - i]
+    ])
+    
+    # ti.static unrolls this small loop for maximum GPU speed
+    for k in ti.static(range(8)):
+        px = points[k, 0]
+        py = points[k, 1]
+        if 0 <= px < grid_size and 0 <= py < grid_size:
+            frames_arg[s, py, px] = r
 
 
-def _validate_inputs(grid_size, sites, cutoff_radius):
-    grid_size = int(grid_size)
-    cutoff_radius = int(cutoff_radius)
-    if grid_size <= 0:
-        raise ValueError("grid_size must be positive")
-    if cutoff_radius < 0:
-        raise ValueError("cutoff_radius must be non-negative")
+@ti.kernel
+def initialize_frames(
+    frames_arg: ti.template(),
+    inf_arg: ti.i32,
+):
+    for s, y, x in frames_arg:
+        frames_arg[s, y, x] = inf_arg
 
-    sites = np.asarray(sites, dtype=np.int32)
-    if sites.ndim != 2 or sites.shape[1] != 2:
-        raise ValueError("sites must have shape (S, 2)")
-    return grid_size, sites, cutoff_radius
+
+@ti.kernel
+def fill_radius_frames_mdcs(
+    frames_arg: ti.template(),
+    sites_arg: ti.template(),
+    cutoff_arg: ti.i32,
+    grid_size_arg: ti.i32,
+    num_sites_arg: ti.i32
+):
+    """
+    Implements MDCS (Modified Digital Circle using Square Numbers) - Algorithm 2.
+    Uses pure integer math and a lookahead buffer to prevent absentee pixels.
+    """
+    for site_idx in range(num_sites_arg):
+        xc = sites_arg[site_idx, 0]
+        yc = sites_arg[site_idx, 1]
+        
+        # Paint the center site itself (radius 0)
+        if 0 <= xc < grid_size_arg and 0 <= yc < grid_size_arg:
+            frames_arg[site_idx, yc, xc] = 0
+            
+        # Grow the digital circle radius step by step up to the cutoff limit
+        for r in range(1, cutoff_arg + 1):
+            
+            # Initializations exactly mirroring Dhar Algorithm 2
+            i = 0
+            j = r
+            s = 0 
+            w = r - 1
+            l = w << 1  # Bitwise shift instead of multiply
+            g = l
+            
+            while i <= j:
+                # do-while loop translation from Algorithm 2
+                while True:
+                    include_sym_points(frames_arg, site_idx, xc, yc, i, j, r, grid_size_arg)
+                    s += i
+                    i += 1
+                    s += i
+                    if s > w:
+                        break
+                
+                # The MDCS Lookahead Check: Captures the 'absentee pixels' (holes)
+                if (s > w) and (s <= (w + g)) and (i <= j):
+                    include_sym_points(frames_arg, site_idx, xc, yc, i, j, r, grid_size_arg)
+                    
+                w += l
+                l -= 2
+                j -= 1
+                g += 2
+
+
+@ti.kernel
+def generate_result(
+    frames_arg: ti.template(),
+    labels_arg: ti.template(),
+    radius_arg: ti.template(),
+    unassigned_arg: ti.template(),
+    num_sites_arg: ti.i32,
+    inf_arg: ti.i32,
+):
+    """
+    Resolves the Z-Buffer stack via Argmin Projection.
+    Currently uses O(S) linear sweep. Next upgrade: O(log S) Parallel Reduction.
+    """
+    for y, x in labels_arg:
+        best_site = -1
+        best_radius = inf_arg
+
+        for s in range(num_sites_arg):
+            candidate_radius = frames_arg[s, y, x]
+            if candidate_radius < best_radius:
+                best_radius = candidate_radius
+                best_site = s
+
+        labels_arg[y, x] = best_site
+        if best_site >= 0:
+            radius_arg[y, x] = best_radius
+            unassigned_arg[y, x] = 0
+        else:
+            radius_arg[y, x] = inf_arg
+            unassigned_arg[y, x] = 1
 
 
 def run_proposed(
@@ -33,12 +127,7 @@ def run_proposed(
     use_parallel_reduction=True,
     save_debug_frames=False,
 ):
-    """Run the digital-circle-growing Voronoi baseline.
-
-    The implementation keeps the requested ``frames[S, H, W]`` structure. For
-    correctness and hole prevention, each site/pixel pair is assigned to the
-    nearest integer radius band when the pixel is inside the cutoff.
-    """
+    """Run the MDCS digital-circle-growing Voronoi baseline."""
 
     grid_size, sites, cutoff_radius = _validate_inputs(grid_size, sites, cutoff_radius)
     num_sites = int(sites.shape[0])
@@ -81,72 +170,16 @@ def run_proposed(
 
     sites_field.from_numpy(sites.astype(np.int32, copy=False))
 
-    diameter = 2 * cutoff_radius + 1
-
-    @ti.kernel
-    def initialize_frames(
-        frames_arg: ti.template(),
-        inf_arg: ti.i32,
-    ):
-        for s, y, x in frames_arg:
-            frames_arg[s, y, x] = inf_arg
-
-    @ti.kernel
-    def fill_radius_frames(
-        frames_arg: ti.template(),
-        sites_arg: ti.template(),
-        cutoff_arg: ti.i32,
-        grid_size_arg: ti.i32,
-    ):
-        for s, oy, ox in ti.ndrange(num_sites, diameter, diameter):
-            dx = ox - cutoff_arg
-            dy = oy - cutoff_arg
-            dist2 = dx * dx + dy * dy
-
-            # This is the radius-band fill:
-            # (r - 0.5)^2 <= dist2 < (r + 0.5)^2.
-            radius = ti.cast(ti.sqrt(ti.cast(dist2, ti.f32)) + 0.5, ti.i32)
-            if radius <= cutoff_arg:
-                x = sites_arg[s, 0] + dx
-                y = sites_arg[s, 1] + dy
-                if x >= 0 and x < grid_size_arg and y >= 0 and y < grid_size_arg:
-                    frames_arg[s, y, x] = radius
-
-    @ti.kernel
-    def generate_result(
-        frames_arg: ti.template(),
-        labels_arg: ti.template(),
-        radius_arg: ti.template(),
-        unassigned_arg: ti.template(),
-        num_sites_arg: ti.i32,
-        inf_arg: ti.i32,
-    ):
-        for y, x in labels_arg:
-            best_site = -1
-            best_radius = inf_arg
-
-            # Simple site loop. The parameter is kept in the public API so this
-            # can later be replaced with a tree/parallel reduction kernel.
-            for s in range(num_sites_arg):
-                candidate_radius = frames_arg[s, y, x]
-                if candidate_radius < best_radius:
-                    best_radius = candidate_radius
-                    best_site = s
-
-            labels_arg[y, x] = best_site
-            if best_site >= 0:
-                radius_arg[y, x] = best_radius
-                unassigned_arg[y, x] = 0
-            else:
-                radius_arg[y, x] = inf_arg
-                unassigned_arg[y, x] = 1
-
+    # 1. Initialize buffers to Infinity
     fill_start = time.perf_counter()
     initialize_frames(frames, DEFAULT_INF)
-    fill_radius_frames(frames, sites_field, cutoff_radius, grid_size)
+    
+    # 2. Run the MDCS Algorithm
+    fill_radius_frames_mdcs(frames, sites_field, cutoff_radius, grid_size, num_sites)
     ti.sync()
     fill_time = time.perf_counter() - fill_start
 
+    # 3. Z-Buffer Argmin Projection
     result_start = time.perf_counter()
     generate_result(frames, labels_field, radius_field, unassigned_field, num_sites, DEFAULT_INF)
     ti.sync()
