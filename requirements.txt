@@ -1,0 +1,7 @@
+taichi
+numpy
+matplotlib
+pillow
+opencv-python
+pandas
+tqdm
