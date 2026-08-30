@@ -1,10 +1,11 @@
 """Command-line runner for single Voronoi experiments."""
 
 import argparse
+import math
 import time
 from pathlib import Path
 
-from config import CSV_DIR, DIFF_DIR, IMAGES_DIR, LOGS_DIR
+from config import CSV_DIR, DIFF_DIR, IMAGES_DIR, LOGS_DIR, MODELS_DIR
 from src.metrics import compare_to_ground_truth
 from src.site_generators import generate_sites, save_sites_csv
 from src.utils import append_metrics_csv, ensure_dirs, save_json, timestamp
@@ -16,6 +17,7 @@ FILE_SUFFIX = {
     "brute_force": "bruteforce",
     "jfa": "jfa",
 }
+ML_MODEL_NOT_FOUND = "ML cutoff model not found. Run experiments/train_cutoff_model.py first."
 
 
 def _normalize_algorithm(algorithm):
@@ -27,6 +29,39 @@ def _normalize_algorithm(algorithm):
 
 def _default_prefix(mode, grid_size, num_sites, cutoff_radius):
     return "{}_{}_{}_cutoff{}".format(mode, grid_size, num_sites, cutoff_radius)
+
+
+def _diagonal_cutoff(grid_size):
+    return int(math.ceil(math.sqrt(2.0) * (int(grid_size) - 1)))
+
+
+def _resolve_cutoff_radius(cutoff_radius, grid_size, sites, mode, needs_proposed=True):
+    cutoff_text = str(cutoff_radius).strip().lower()
+    if cutoff_text != "auto_ml":
+        return int(cutoff_radius)
+
+    if not needs_proposed:
+        return 0
+
+    model_path = MODELS_DIR / "cutoff_predictor.joblib"
+    if not model_path.exists():
+        raise FileNotFoundError(ML_MODEL_NOT_FOUND)
+
+    from src.cutoff_features import extract_cutoff_features
+    from src.cutoff_model import load_cutoff_model, predict_cutoff
+
+    features = extract_cutoff_features(grid_size, sites)
+    features["mode"] = mode
+    model = load_cutoff_model(model_path)
+    predicted_cutoff = predict_cutoff(
+        model,
+        features,
+        safety_factor=1.10,
+        safety_add=5,
+        max_cutoff=_diagonal_cutoff(grid_size),
+    )
+    print("Predicted ML cutoff radius: {}".format(predicted_cutoff))
+    return int(predicted_cutoff)
 
 
 def _run_brute_force(grid_size, sites):
@@ -147,17 +182,27 @@ def run_single_experiment(
 
     grid_size = int(grid_size)
     num_sites = int(num_sites)
-    cutoff_radius = int(cutoff_radius)
     seed = int(seed)
-    prefix = output_prefix or _default_prefix(mode, grid_size, num_sites, cutoff_radius)
+    requested_cutoff_radius = cutoff_radius
+    needs_proposed = algorithm in ("proposed", "all")
 
     print("Grid size: {} x {}".format(grid_size, grid_size))
     print("Sites: {}".format(num_sites))
     print("Mode: {}".format(mode))
-    print("Cutoff radius: {}".format(cutoff_radius))
+    print("Requested cutoff radius: {}".format(requested_cutoff_radius))
     print("Architecture: {}".format(arch))
 
     sites = generate_sites(grid_size, num_sites, mode=mode, seed=seed)
+    cutoff_radius = _resolve_cutoff_radius(
+        requested_cutoff_radius,
+        grid_size,
+        sites,
+        mode,
+        needs_proposed=needs_proposed,
+    )
+    print("Cutoff radius: {}".format(cutoff_radius))
+
+    prefix = output_prefix or _default_prefix(mode, grid_size, num_sites, cutoff_radius)
     sites_path = CSV_DIR / "{}_sites.csv".format(prefix)
     save_sites_csv(sites, sites_path)
 
@@ -218,6 +263,7 @@ def run_single_experiment(
             "num_sites": num_sites,
             "mode": mode,
             "cutoff_radius": cutoff_radius,
+            "requested_cutoff_radius": requested_cutoff_radius,
             "arch": arch,
             "seed": seed,
             "algorithm": algorithm,
@@ -253,7 +299,7 @@ def build_parser():
     parser.add_argument("--grid", type=int, default=512, dest="grid_size")
     parser.add_argument("--sites", type=int, default=100, dest="num_sites")
     parser.add_argument("--mode", type=str, default="random")
-    parser.add_argument("--cutoff", type=int, default=80, dest="cutoff_radius")
+    parser.add_argument("--cutoff", type=str, default="80", dest="cutoff_radius")
     parser.add_argument("--arch", type=str, default="gpu", choices=["gpu", "cpu"])
     parser.add_argument(
         "--algorithm",

@@ -7,13 +7,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from config import CSV_DIR, DIFF_DIR, IMAGES_DIR, LOGS_DIR, OUTPUT_DIR, PLOTS_DIR, RESULT_COLUMNS
+from config import CSV_DIR, DIFF_DIR, IMAGES_DIR, LOGS_DIR, MODELS_DIR, OUTPUT_DIR, PLOTS_DIR, RESULT_COLUMNS
 
 
 def ensure_dirs():
     """Create all standard output directories."""
 
-    for path in (OUTPUT_DIR, IMAGES_DIR, DIFF_DIR, CSV_DIR, PLOTS_DIR, LOGS_DIR):
+    for path in (OUTPUT_DIR, IMAGES_DIR, DIFF_DIR, CSV_DIR, PLOTS_DIR, LOGS_DIR, MODELS_DIR):
         path.mkdir(parents=True, exist_ok=True)
 
 

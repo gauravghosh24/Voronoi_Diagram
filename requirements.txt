@@ -5,3 +5,5 @@ pillow
 opencv-python
 pandas
 tqdm
+scikit-learn
+joblib

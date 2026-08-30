@@ -1,0 +1,31 @@
+{
+  "feature_columns": [
+    "grid_size",
+    "num_sites",
+    "site_density",
+    "nn_min",
+    "nn_mean",
+    "nn_median",
+    "nn_max",
+    "nn_std",
+    "nn_p75",
+    "nn_p90",
+    "nn_p95",
+    "boundary_min",
+    "boundary_mean",
+    "boundary_max",
+    "boundary_std",
+    "block_min",
+    "block_max",
+    "block_mean",
+    "block_std",
+    "empty_block_count",
+    "mode_boundary",
+    "mode_close",
+    "mode_clustered",
+    "mode_collinear_diagonal",
+    "mode_collinear_horizontal",
+    "mode_grid",
+    "mode_random"
+  ]
+}

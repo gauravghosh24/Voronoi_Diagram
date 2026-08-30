@@ -54,6 +54,12 @@ Clustered CPU example:
 python run_experiment.py --grid 256 --sites 20 --mode clustered --cutoff 60 --algorithm proposed --arch cpu --compare-bruteforce --save-images
 ```
 
+ML-predicted cutoff example:
+
+```powershell
+python run_experiment.py --grid 512 --sites 100 --mode clustered --cutoff auto_ml --algorithm proposed --arch gpu --compare-bruteforce --save-images --save-diff
+```
+
 Supported algorithms:
 
 - `proposed`
@@ -92,6 +98,55 @@ Other studies:
 python experiments/distribution_study.py --arch gpu
 python experiments/grid_size_study.py --arch gpu
 python experiments/site_count_study.py --arch gpu
+```
+
+## ML Cutoff Prediction
+
+The project can train a scikit-learn model to predict a good global
+`cutoff_radius` for the proposed digital circle-growing algorithm. The target
+is the oracle cutoff computed from brute-force distance maps:
+
+```text
+ceil(sqrt(max_squared_distance_to_nearest_site))
+```
+
+Build the cutoff training dataset:
+
+```powershell
+python experiments/build_cutoff_dataset.py --max-seed 30
+```
+
+Train the Random Forest cutoff model:
+
+```powershell
+python experiments/train_cutoff_model.py
+```
+
+This saves:
+
+```text
+models/cutoff_predictor.joblib
+models/cutoff_feature_columns.json
+outputs/csv/cutoff_model_metrics.csv
+```
+
+Evaluate fixed, ML-predicted, and oracle cutoffs:
+
+```powershell
+python experiments/evaluate_ml_cutoff.py --arch gpu
+```
+
+Run the proposed algorithm with the trained ML cutoff predictor:
+
+```powershell
+python run_experiment.py --grid 512 --sites 100 --mode clustered --cutoff auto_ml --algorithm proposed --arch gpu --compare-bruteforce --save-images --save-diff
+```
+
+If `models/cutoff_predictor.joblib` does not exist, `--cutoff auto_ml` exits
+with:
+
+```text
+ML cutoff model not found. Run experiments/train_cutoff_model.py first.
 ```
 
 ## Outputs
