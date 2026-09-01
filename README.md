@@ -51,7 +51,7 @@ python run_experiment.py --grid 512 --sites 100 --mode random --cutoff 80 --algo
 Clustered CPU example:
 
 ```powershell
-python run_experiment.py --grid 256 --sites 20 --mode clustered --cutoff 60 --algorithm proposed --arch cpu --compare-bruteforce --save-images
+python  run_experiment.py --grid 256 --sites 20 --mode clustered --cutoff 60 --algorithm proposed --arch cpu --compare-bruteforce --save-images
 ```
 
 ML-predicted cutoff example:
@@ -89,7 +89,7 @@ python experiments/cutoff_study.py --arch gpu
 Full default batch:
 
 ```powershell
-python run_batch.py --arch gpu
+python  run_batch.py --arch gpu
 ```
 
 Other studies:
