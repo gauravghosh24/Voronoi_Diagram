@@ -2,7 +2,7 @@
 
 This project implements and tests a GPU/CPU-friendly discrete Voronoi construction workflow inspired by "A digital geometric approach for discrete Voronoi diagram construction using GPU".
 
-The main goal is to compare a digital circle-growing Voronoi method against brute-force ground truth and a basic Jump Flood Algorithm (JFA) across site distributions, cutoff radii, grid sizes, and site counts.
+The main goal is to compare a digital circle-growing Voronoi method against brute-force ground truth and a basic Jump Flood Algorithm (JFA)  across site distributions, cutoff radii, grid sizes, and site counts.
 
 ## Algorithms Implemented
 
@@ -51,7 +51,7 @@ python run_experiment.py --grid 512 --sites 100 --mode random --cutoff 80 --algo
 Clustered CPU example:
 
 ```powershell
-python run_experiment.py --grid 256 --sites 20 --mode clustered --cutoff 60 --algorithm proposed --arch cpu --compare-bruteforce --save-images
+python  run_experiment.py --grid 256 --sites 20 --mode clustered --cutoff 60 --algorithm proposed --arch cpu --compare-bruteforce --save-images
 ```
 
 ML-predicted cutoff example:
@@ -89,7 +89,7 @@ python experiments/cutoff_study.py --arch gpu
 Full default batch:
 
 ```powershell
-python run_batch.py --arch gpu
+python  run_batch.py --arch gpu
 ```
 
 Other studies:
@@ -204,7 +204,7 @@ Unassigned pixels are represented by label `-1`, shown as white in output images
 2. Run `algorithm all` on a small grid to compare all algorithms.
 3. Run the cutoff study to understand completeness versus runtime.
 4. Run the distribution study to find failure modes around boundary, close, and collinear sites.
-5. Run grid-size and site-count studies to observe scaling and memory pressure.
+5. Run grid-size  and site-count studies to observe scaling and memory pressure.
 
 ## Implementation Notes
 
