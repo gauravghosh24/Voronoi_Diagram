@@ -28,6 +28,8 @@ def _normalize_algorithm(algorithm):
 
 
 def _default_prefix(mode, grid_size, num_sites, cutoff_radius):
+    if str(cutoff_radius).strip().lower() == "incremental":
+        return "{}_{}_{}_cutoff_incremental".format(mode, grid_size, num_sites)
     return "{}_{}_{}_cutoff{}".format(mode, grid_size, num_sites, cutoff_radius)
 
 
@@ -37,6 +39,9 @@ def _diagonal_cutoff(grid_size):
 
 def _resolve_cutoff_radius(cutoff_radius, grid_size, sites, mode, needs_proposed=True):
     cutoff_text = str(cutoff_radius).strip().lower()
+    if cutoff_text == "incremental":
+        return "incremental"
+
     if cutoff_text != "auto_ml":
         return int(cutoff_radius)
 
@@ -85,17 +90,35 @@ def _run_brute_force(grid_size, sites):
     return {"labels": labels, "dist_map": dist_map, "stats": stats}
 
 
-def _run_proposed(grid_size, sites, cutoff_radius, arch):
-    from src.proposed_circle_growing import run_proposed
+def _run_proposed(grid_size, sites, cutoff_radius, arch, circle_backend="mdcs", step_radius=15):
+    from src.proposed_circle_growing import run_proposed, run_proposed_incremental
 
-    print("Running proposed algorithm...")
-    labels, radius_map, unassigned_mask, stats = run_proposed(
-        grid_size,
-        sites,
-        cutoff_radius,
-        arch=arch,
-        use_parallel_reduction=True,
-    )
+    if str(cutoff_radius).strip().lower() == "incremental":
+        print("Running proposed algorithm (Incremental Radius mode, backend={}, step={})...".format(
+            circle_backend, step_radius
+        ))
+        labels, radius_map, unassigned_mask, stats = run_proposed_incremental(
+            grid_size,
+            sites,
+            initial_radius=step_radius,
+            step_radius=step_radius,
+            circle_backend=circle_backend,
+            arch=arch,
+            use_parallel_reduction=True,
+        )
+        print("Incremental mode finished in {} iterations; final radius = {}; unassigned = {}".format(
+            stats["iterations"], stats["final_radius"], stats["unassigned_pixels"]
+        ))
+    else:
+        print("Running proposed algorithm (backend={})...".format(circle_backend))
+        labels, radius_map, unassigned_mask, stats = run_proposed(
+            grid_size,
+            sites,
+            int(cutoff_radius),
+            circle_backend=circle_backend,
+            arch=arch,
+            use_parallel_reduction=True,
+        )
     return {
         "labels": labels,
         "radius_map": radius_map,
@@ -113,13 +136,19 @@ def _run_jfa(grid_size, sites, arch):
 
 
 def _build_csv_row(stats, metrics, grid_size, num_sites, mode, cutoff_radius, arch, seed):
+    cutoff_val = stats.get("final_radius", cutoff_radius)
+    try:
+        cutoff_val = int(cutoff_val)
+    except (ValueError, TypeError):
+        cutoff_val = str(cutoff_val)
+
     row = {
         "timestamp": timestamp(),
         "algorithm": stats.get("algorithm", ""),
         "grid_size": int(grid_size),
         "num_sites": int(num_sites),
         "site_mode": mode,
-        "cutoff_radius": int(cutoff_radius),
+        "cutoff_radius": cutoff_val,
         "arch": stats.get("arch", arch),
         "seed": int(seed),
         "total_time": stats.get("total_time", ""),
@@ -165,6 +194,8 @@ def run_single_experiment(
     num_sites=100,
     mode="random",
     cutoff_radius=80,
+    circle_backend="mdcs",
+    step_radius=15,
     arch="gpu",
     algorithm="proposed",
     seed=42,
@@ -191,6 +222,8 @@ def run_single_experiment(
     print("Mode: {}".format(mode))
     print("Requested cutoff radius: {}".format(requested_cutoff_radius))
     print("Architecture: {}".format(arch))
+    if needs_proposed:
+        print("Circle backend: {}".format(circle_backend))
 
     sites = generate_sites(grid_size, num_sites, mode=mode, seed=seed)
     cutoff_radius = _resolve_cutoff_radius(
@@ -212,7 +245,14 @@ def run_single_experiment(
         results["brute_force"] = _run_brute_force(grid_size, sites)
 
     if algorithm in ("proposed", "all"):
-        results["proposed"] = _run_proposed(grid_size, sites, cutoff_radius, arch)
+        results["proposed"] = _run_proposed(
+            grid_size,
+            sites,
+            cutoff_radius,
+            arch,
+            circle_backend=circle_backend,
+            step_radius=step_radius,
+        )
 
     if algorithm in ("jfa", "all"):
         results["jfa"] = _run_jfa(grid_size, sites, arch)
@@ -264,6 +304,8 @@ def run_single_experiment(
             "mode": mode,
             "cutoff_radius": cutoff_radius,
             "requested_cutoff_radius": requested_cutoff_radius,
+            "circle_backend": circle_backend,
+            "step_radius": step_radius,
             "arch": arch,
             "seed": seed,
             "algorithm": algorithm,
@@ -299,7 +341,26 @@ def build_parser():
     parser.add_argument("--grid", type=int, default=512, dest="grid_size")
     parser.add_argument("--sites", type=int, default=100, dest="num_sites")
     parser.add_argument("--mode", type=str, default="random")
-    parser.add_argument("--cutoff", type=str, default="80", dest="cutoff_radius")
+    parser.add_argument(
+        "--cutoff",
+        type=str,
+        default="80",
+        dest="cutoff_radius",
+        help="Cutoff radius integer, 'auto_ml', or 'incremental'",
+    )
+    parser.add_argument(
+        "--circle-backend",
+        type=str,
+        default="mdcs",
+        choices=["mdcs", "radius_band"],
+        help="Circle generator: 'mdcs' (Algorithm 2) or 'radius_band'",
+    )
+    parser.add_argument(
+        "--step-radius",
+        type=int,
+        default=15,
+        help="Step increment for incremental radius mode (Algorithm 4, default: 15)",
+    )
     parser.add_argument("--arch", type=str, default="gpu", choices=["gpu", "cpu"])
     parser.add_argument(
         "--algorithm",
@@ -322,6 +383,8 @@ def main():
         num_sites=args.num_sites,
         mode=args.mode,
         cutoff_radius=args.cutoff_radius,
+        circle_backend=args.circle_backend,
+        step_radius=args.step_radius,
         arch=args.arch,
         algorithm=args.algorithm,
         seed=args.seed,

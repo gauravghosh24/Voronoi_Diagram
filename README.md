@@ -60,9 +60,15 @@ ML-predicted cutoff example:
 python run_experiment.py --grid 512 --sites 100 --mode clustered --cutoff auto_ml --algorithm proposed --arch gpu --compare-bruteforce --save-images --save-diff
 ```
 
+Incremental Radius mode (Algorithm 4 from paper):
+
+```powershell
+python run_experiment.py --grid 512 --sites 100 --mode random --cutoff incremental --step-radius 15 --circle-backend mdcs --algorithm proposed --arch gpu --compare-bruteforce --save-images --save-diff
+```
+
 Supported algorithms:
 
-- `proposed`
+- `proposed` (supports `--circle-backend mdcs` and `--circle-backend radius_band`)
 - `brute_force`
 - `jfa`
 - `all`
@@ -210,15 +216,25 @@ Unassigned pixels are represented by label `-1`, shown as white in output images
 
 The proposed algorithm allocates `frames[S, H, W]`, where each entry stores the radius at which a site reaches a pixel. This is intentionally research-friendly because it exposes the paper-inspired frame structure, but it can be memory-heavy.
 
-The current digital circle generator uses integer radius bands:
+### Circle Generator Backends
 
-```text
-(r - 0.5)^2 <= dx^2 + dy^2 < (r + 0.5)^2
+1. **`mdcs` (Default, Algorithm 2 in Dhar et al. 2024)**:
+   Pure integer number-theoretic digital circle generation using square-number increments ($s = i^2$) and lookahead state $(s > w \land s \le w + g \land i \le j)$ to eliminate absentee pixels. Verified to produce **zero absentee pixels** on discs up to radius $r = 20$ (Figure 4B in paper), resolving the 128 holes of classical DCS (Figure 4A).
+
+2. **`radius_band`**:
+   Float Euclidean distance rounding baseline (`(r - 0.5)^2 <= dx^2 + dy^2 < (r + 0.5)^2`).
+
+### Incremental Radius Mode (Algorithm 4)
+
+Passing `--cutoff incremental` dynamically expands concentric circles by `--step-radius` (default: 15) until zero unassigned pixels remain, ensuring complete tessellation without having to manually tune cutoff radii.
+
+### Running Unit Tests
+
+Run the complete test suite verifying zero absentee pixels and algorithm correctness:
+
+```powershell
+python -m pytest tests/test_mdcs.py -v
 ```
-
-This avoids absentee pixels inside the cutoff region. It is slower than a midpoint/octant-only boundary plotter, but it is a clearer correctness baseline and can be replaced later in `src/proposed_circle_growing.py`.
-
-The proposed method stores integer radius layers, so it can disagree with exact brute force near Voronoi boundaries, especially when multiple sites land in the same radius layer. This is useful for studying the approximation behavior.
 
 ## Troubleshooting
 
