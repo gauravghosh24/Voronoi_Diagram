@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: voronoi-algorithm-lab
+    runtime: static
+    buildCommand: echo "Static site assets are ready"
+    staticPublishPath: ./web/voronoi-lab

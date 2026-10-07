@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f3ed">
+  <meta name="description" content="Step through Brute Force, Jump Flood Algorithm, and a radius-band Voronoi method on the same editable grid.">
+  <title>Voronoi Algorithm Lab</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231b2541'/%3E%3Cpath d='M0 32h64M32 0v64M4 4l56 56M60 4 4 60' stroke='%23aebcfb' stroke-width='2'/%3E%3Ccircle cx='19' cy='22' r='6' fill='%234f6cff' stroke='white' stroke-width='2'/%3E%3Ccircle cx='45' cy='43' r='6' fill='%23f16d5d' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="masthead">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">◉</span><span>VORONOI <b>LAB</b></span></div>
+      <span class="context-label">Interactive project simulator</span>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Explore the same sites, three ways</p>
+          <h1 id="page-title">Watch the algorithm choose.</h1>
+          <p class="intro-copy">Place sites on the grid, move through each computation, and compare the resulting Voronoi regions. The proposed method follows this project’s <strong>radius-band implementation</strong>.</p>
+        </div>
+        <div class="intro-key"><span class="key-dot"></span><span>Same input in all three views<br><strong>Exact answer shown by Brute Force</strong></span></div>
+      </section>
+
+      <section class="workbench" aria-label="Simulation controls">
+        <div class="workbench-top">
+          <div class="control-group presets">
+            <span class="control-label">SCENE</span>
+            <div class="segmented" role="group" aria-label="Site arrangements">
+              <button type="button" data-preset="two" class="is-active">Two sites</button>
+              <button type="button" data-preset="three">Three sites</button>
+              <button type="button" data-preset="cluster">Clustered</button>
+              <button type="button" data-preset="random">Random</button>
+            </div>
+          </div>
+          <div class="control-group slider-control">
+            <label class="control-label" for="grid-size">GRID <output id="grid-size-value">16 × 16</output></label>
+            <input id="grid-size" type="range" min="8" max="28" value="16">
+          </div>
+          <div class="control-group slider-control">
+            <label class="control-label" for="cutoff">PROPOSED CUTOFF <output id="cutoff-value">7</output></label>
+            <input id="cutoff" type="range" min="0" max="21" value="7">
+          </div>
+          <button id="reset-steps" type="button" class="reset-button" title="Move all timelines back to their first stage">↺ <span>Reset steps</span></button>
+        </div>
+        <div class="workbench-bottom">
+          <p class="edit-hint"><span class="hint-icon">✣</span> Click to add; drag to move; Shift-click or × to remove. Keyboard: arrows inspect, Enter adds, Delete removes.</p>
+          <div id="site-list" class="site-list" aria-label="Current sites"></div>
+        </div>
+      </section>
+
+      <section class="algorithm-grid" aria-label="Algorithm simulations">
+        <article class="algorithm-card" data-algorithm="brute">
+          <div class="card-heading"><div><span class="card-kicker">01 / EXACT REFERENCE</span><h2>Brute Force</h2></div><span class="method-tag exact">Exact</span></div>
+          <p class="card-description">Every pixel compares its distance to every site. The smallest squared distance wins.</p>
+          <div class="canvas-wrap"><canvas id="brute-canvas" width="520" height="520" tabindex="0" aria-label="Brute Force Voronoi grid. Use arrow keys to inspect cells, Enter to add a site, Delete to remove a site."></canvas><span class="canvas-corner" id="brute-corner">0 / 0</span></div>
+          <div class="stage-head"><span class="stage-label">CURRENT STAGE</span><span class="stage-count" id="brute-count"></span></div>
+          <h3 id="brute-title" class="stage-title"></h3>
+          <p id="brute-detail" class="stage-detail"></p>
+          <div class="timeline" role="group" aria-label="Brute Force timeline"><button type="button" class="step-button" data-algo="brute" data-action="back" aria-label="Brute Force previous stage">←</button><input type="range" id="brute-range" min="0" value="0" aria-label="Brute Force stage"><button type="button" class="step-button" data-algo="brute" data-action="next" aria-label="Brute Force next stage">→</button><button type="button" class="play-button" data-algo="brute" aria-label="Play Brute Force">▶</button></div>
+          <div class="metric-row"><span>Assigned <b id="brute-assigned"></b></span><span>Match vs exact <b id="brute-accuracy"></b></span></div>
+        </article>
+
+        <article class="algorithm-card" data-algorithm="jfa">
+          <div class="card-heading"><div><span class="card-kicker">02 / JUMP PROPAGATION</span><h2>Jump Flooding</h2></div><span class="method-tag approx">Approximate</span></div>
+          <p class="card-description">Each pixel samples candidate labels at shrinking jump distances, then keeps the nearest candidate.</p>
+          <div class="canvas-wrap"><canvas id="jfa-canvas" width="520" height="520" tabindex="0" aria-label="Jump Flood Algorithm Voronoi grid. Use arrow keys to inspect cells, Enter to add a site, Delete to remove a site."></canvas><span class="canvas-corner" id="jfa-corner">0 / 0</span></div>
+          <div class="stage-head"><span class="stage-label">CURRENT STAGE</span><span class="stage-count" id="jfa-count"></span></div>
+          <h3 id="jfa-title" class="stage-title"></h3>
+          <p id="jfa-detail" class="stage-detail"></p>
+          <div class="timeline" role="group" aria-label="Jump Flood timeline"><button type="button" class="step-button" data-algo="jfa" data-action="back" aria-label="Jump Flood previous stage">←</button><input type="range" id="jfa-range" min="0" value="0" aria-label="Jump Flood stage"><button type="button" class="step-button" data-algo="jfa" data-action="next" aria-label="Jump Flood next stage">→</button><button type="button" class="play-button" data-algo="jfa" aria-label="Play Jump Flood">▶</button></div>
+          <div class="metric-row"><span>Assigned <b id="jfa-assigned"></b></span><span>Match vs exact <b id="jfa-accuracy"></b></span></div>
+        </article>
+
+        <article class="algorithm-card proposed-card" data-algorithm="proposed">
+          <div class="card-heading"><div><span class="card-kicker">03 / PROJECT IMPLEMENTATION</span><h2>Radius-band method</h2></div><span class="method-tag cutoff">Cutoff R</span></div>
+          <p class="card-description">Sites write rounded-distance bands into frames; each pixel selects its best reached site.</p>
+          <div class="canvas-wrap"><canvas id="proposed-canvas" width="520" height="520" tabindex="0" aria-label="Proposed radius-band Voronoi grid. Use arrow keys to inspect cells, Enter to add a site, Delete to remove a site."></canvas><span class="canvas-corner" id="proposed-corner">0 / 0</span></div>
+          <div class="stage-head"><span class="stage-label">CURRENT STAGE</span><span class="stage-count" id="proposed-count"></span></div>
+          <h3 id="proposed-title" class="stage-title"></h3>
+          <p id="proposed-detail" class="stage-detail"></p>
+          <div class="timeline" role="group" aria-label="Proposed method timeline"><button type="button" class="step-button" data-algo="proposed" data-action="back" aria-label="Proposed previous stage">←</button><input type="range" id="proposed-range" min="0" value="0" aria-label="Proposed stage"><button type="button" class="step-button" data-algo="proposed" data-action="next" aria-label="Proposed next stage">→</button><button type="button" class="play-button" data-algo="proposed" aria-label="Play proposed method">▶</button></div>
+          <div class="metric-row"><span>Assigned <b id="proposed-assigned"></b></span><span>Match vs exact <b id="proposed-accuracy"></b></span></div>
+        </article>
+      </section>
+
+      <section class="inspector" aria-label="Pixel inspector">
+        <div class="inspector-intro"><span class="section-index">PIXEL INSPECTOR</span><h2 id="inspector-title">Hover a grid cell</h2><p id="inspector-subtitle">See the exact distance calculation for every site.</p></div>
+        <div id="inspector-distances" class="distance-list"></div>
+      </section>
+
+      <section class="complexity-section" aria-labelledby="complexity-title">
+        <div class="section-header"><div><span class="section-index">WHAT THE WORK COSTS</span><h2 id="complexity-title">Complexity, side by side</h2></div><p>Let <strong>N × N</strong> be the grid, <strong>S</strong> the sites, <strong>R</strong> the cutoff, and <strong>P</strong> the number of JFA passes.</p></div>
+        <div class="complexity-grid">
+          <article class="complexity-card"><span class="complexity-number">01</span><h3>Brute Force</h3><div class="formula">O(SN²) <small>time</small></div><p>Every one of N² pixels compares all S sites. Exact and easy to verify.</p><div class="cost-line">This scene <strong id="brute-cost"></strong> distance evaluations</div><div class="cost-line">Memory <strong>O(N²) output + chunk workspace</strong></div></article>
+          <article class="complexity-card"><span class="complexity-number">02</span><h3>Jump Flooding</h3><div class="formula">O(N² log N + S) <small>time</small></div><p>Each pass checks at most 9 positions per pixel; jump lengths halve each pass.</p><div class="cost-line">This scene <strong id="jfa-cost"></strong> probe upper bound</div><div class="cost-line">Memory <strong>O(N² + S)</strong></div></article>
+          <article class="complexity-card"><span class="complexity-number">03</span><h3>Radius-band method</h3><div class="formula">O(SN² + SR²) <small>time</small></div><p>Initialize S frames, scan each site’s cutoff box, then check S candidates per pixel.</p><div class="cost-line">This scene <strong id="proposed-cost"></strong> offset checks</div><div class="cost-line">Frame memory <strong id="proposed-memory"></strong></div></article>
+        </div>
+        <p class="complexity-footnote">The counts describe work, not elapsed time. GPU scheduling, memory traffic, kernel launch cost, and data transfer also affect performance. JFA’s bound includes out-of-grid probes; the proposed offset count includes positions later rejected by the cutoff test.</p>
+      </section>
+
+      <section class="study-note" aria-labelledby="study-title"><div class="study-icon">i</div><div><h2 id="study-title">What this model represents</h2><p>The browser reproduces the project’s nearest-site rules on a small grid. Brute Force is exact. JFA uses eight neighbors per pass plus one extra jump-1 correction, so it can still miss a nearest site. The proposed implementation fills per-site frames using <code>floor(sqrt(dx² + dy²) + 0.5)</code>; tied radius bands are resolved by exact squared distance, then the lower site index. Its animated radius slices are a teaching view: the actual Taichi fill kernel processes site–offset pairs in parallel, and pixel reduction happens afterward. This is a browser simulation, not a CPU/GPU benchmark or the paper’s exact MDCS procedure.</p></div></section>
+    </main>
+    <footer><span>VORONOI LAB · FINAL-YEAR PROJECT COMPANION</span><span>Built to explain the implementation, step by step.</span></footer>
+  </div>
+</body>
+</html>
